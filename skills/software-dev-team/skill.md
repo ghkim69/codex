@@ -31,8 +31,12 @@ description: "소프트웨어 개발 팀 오케스트레이터. Gatekeeper-Advis
    - 구현 목표 (기능 목록)
    - 기술 제약 (런타임, DB, 프레임워크, 외부 API)
    - 완료 기준 (동작 확인 방법)
-2. `_workspace/` 디렉토리를 초기화한다.
-3. 태스크 목록을 작성한다 (`TaskCreate` 또는 `_workspace/tasks.json`).
+2. 기술 제약을 `project_constraints` 변수에 저장한다 (Phase 3 ACP에서 사용).
+   ```
+   project_constraints = "Node 20 / PostgreSQL 15 / Next.js 14 / ..."  # 실제 값으로 채운다
+   ```
+3. `_workspace/` 디렉토리를 초기화한다.
+4. 태스크 목록을 작성한다 (`TaskCreate` 또는 `_workspace/tasks.json`).
 
 ### Phase 2 — 태스크 분배 (오케스트레이터 → 에이전트)
 
@@ -47,10 +51,13 @@ description: "소프트웨어 개발 팀 오케스트레이터. Gatekeeper-Advis
 #### 초기화
 
 ```
-stagnation      = {"backend-dev": 0, "frontend-dev": 0, "qa-inspector": 0}
-advisor_calls   = {"backend-dev": 0, "frontend-dev": 0, "qa-inspector": 0}
-last_snapshot   = {}   # {agent: {files: [...mtimes], tasks: [...statuses]}}
-loop_count      = 0
+stagnation            = {"backend-dev": 0, "frontend-dev": 0, "qa-inspector": 0}
+advisor_calls         = {"backend-dev": 0, "frontend-dev": 0, "qa-inspector": 0}
+advisor_last_response = {"backend-dev": "", "frontend-dev": "", "qa-inspector": ""}
+agent_last_error      = {"backend-dev": "", "frontend-dev": "", "qa-inspector": ""}
+last_snapshot         = {}   # {agent: {files: {path: mtime}, tasks: {id: status}}}
+loop_count            = 0
+# project_constraints: Phase 1에서 채운다 (런타임/DB/프레임워크/외부 API 버전)
 ```
 
 #### 루프 진입 조건
@@ -80,6 +87,16 @@ for agent in ["backend-dev", "frontend-dev", "qa-inspector"]:
   tasks_prev = last_snapshot.get(agent, {}).get("tasks", {})
   task_advanced = (tasks_now != tasks_prev)
 
+  # [Fix 1] 모든 태스크가 완료된 에이전트는 stagnation 판정 건너뜀 (false positive 방지)
+  if tasks_now AND all(status == "done" for status in tasks_now.values()):
+    last_snapshot[agent] = {"files": agent_files_now, "tasks": tasks_now}
+    continue
+
+  # [Fix 3] 첫 루프 cold start — 기준 스냅샷만 초기화하고 stagnation 증가 건너뜀
+  if loop_count == 1 AND NOT last_snapshot.get(agent):
+    last_snapshot[agent] = {"files": agent_files_now, "tasks": tasks_now}
+    continue
+
   if file_changed OR task_advanced:
     stagnation[agent] = 0
   else:
@@ -95,13 +112,13 @@ for agent in ["backend-dev", "frontend-dev", "qa-inspector"]:
 
     # ACP 구성
     acp = f"""
-[TRIGGER] stagnation={stagnation[agent]}, loop={loop_count}
+[TRIGGER] OL:stagnation={stagnation[agent]}, loop={loop_count}, advisor_calls={advisor_calls[agent]+1}/3
 [GOAL]    {agent}의 현재 담당 태스크를 완료한다. 구체적 목표: {TaskGet(assignee=agent, status="in_progress")[0].description}
-[HARD_CONSTRAINTS] {프로젝트_제약}   # Phase 1에서 추출한 기술 스택·버전
+[HARD_CONSTRAINTS] {project_constraints}
 [ATTEMPTS]
-  (에이전트 로그 또는 마지막 메시지에서 추출)
+  (에이전트 마지막 메시지 또는 _workspace/{agent}/errors.log에서 추출)
 [BLOCKER]
-  type: (에이전트 마지막 에러 메시지 유형)
+  type: {agent_last_error[agent] or "알 수 없음 — 에이전트 응답 없음"}
   loc:  (파일:라인, 알 수 있는 경우)
   msg:  (에러 첫 줄 100자 이내)
 [HYPOTHESIS]
@@ -110,8 +127,9 @@ for agent in ["backend-dev", "frontend-dev", "qa-inspector"]:
 """
 
     SendMessage(to="advisor", message=acp)
-    # advisor는 진단 후 해당 에이전트에게 직접 SendMessage로 교정 지시를 보낸다
-    # advisor의 교정 지시 발송은 advisor.md 프로토콜에 따른다
+    # [Fix 2] advisor 응답 수신 후 반드시 아래 두 변수를 업데이트한다:
+    #   advisor_last_response[agent] = <advisor 응답의 교정 접근법 요약 1줄>
+    #   agent_last_error[agent]      = <다음 루프에서 에이전트가 보고한 에러 첫 줄>
 
     stagnation[agent]    = 0
     advisor_calls[agent] += 1
@@ -180,16 +198,24 @@ C. 수동 개입 후 재시도
 
 ### 시나리오 2 — Outer Loop 경로 (Gatekeeper 개입)
 
-**설정:** frontend-dev가 API shape 불일치로 타입 에러 반복. Self-Correction 2회 시도했으나 advisor 교정도 효과 없음
+**설정:** frontend-dev가 API shape 불일치로 타입 에러 반복. Self-Correction 시도했으나 에이전트 자율 회복 실패.
+
+> **카운터 주의:** `advisor_calls`는 **오케스트레이터가 Gatekeeper 루프에서 직접 호출한 횟수**만 추적한다.
+> Self-Correction 경로(에이전트 → advisor 직접 SendMessage)는 이 카운터에 반영되지 않는다.
 
 **예상 흐름:**
-1. frontend-dev Self-Correction → ACP → advisor (1회차)
+1. frontend-dev Self-Correction → advisor에게 직접 ACP SendMessage
+   - advisor_calls[frontend-dev] = 0 (변화 없음 — 에이전트 직접 호출)
 2. advisor 교정 지시 → frontend-dev 시도 → 여전히 교착
-3. Gatekeeper 루프: stagnation[frontend-dev] = 2 → advisor 호출 (2회차)
-4. advisor 교정 지시 (다른 접근법) → frontend-dev 시도 → 여전히 교착
-5. stagnation[frontend-dev] = 2, advisor_calls[frontend-dev] = 3 → Level 3 에스컬레이션
-6. 사용자: "B. backend-dev에게 API shape 수정 요청"
-7. 오케스트레이터: backend-dev에게 타입 수정 지시 → frontend-dev 재시도 성공
+3. Gatekeeper 루프: stagnation=2 → advisor 호출 → advisor_calls[frontend-dev] = 1
+4. advisor 교정 지시 → frontend-dev 시도 → 여전히 교착
+5. Gatekeeper 루프: stagnation=2 → advisor 호출 → advisor_calls[frontend-dev] = 2
+6. advisor 교정 지시 → frontend-dev 시도 → 여전히 교착
+7. Gatekeeper 루프: stagnation=2 → advisor 호출 → advisor_calls[frontend-dev] = 3
+8. advisor 교정 지시 → frontend-dev 시도 → 여전히 교착
+9. Gatekeeper 루프: stagnation=2, advisor_calls=3 → Step 3 조건 불충족 → **Step 4 Level 3 에스컬레이션**
+10. 사용자: "B. backend-dev에게 API shape 수정 요청"
+11. 오케스트레이터: backend-dev에게 타입 수정 지시 → frontend-dev 재시도 성공
 
 ---
 
