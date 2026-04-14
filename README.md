@@ -18,7 +18,7 @@ Claude Code 에이전트 하네스 스킬 라이브러리 및 AI 시스템 설�
   - [팀 예시 (6개)](skills/harness/references/team-examples.md)
   - [스킬 작성 가이드](skills/harness/references/skill-writing-guide.md)
   - [스킬 테스트 가이드](skills/harness/references/skill-testing-guide.md)
-  - [QA 에이전트 가이드](skills/harness/references/qa-agent-guide.md)
+  - [QA 에이전트 가이드](skills/harness/references/qa-agent-guide.md) — 경계면 검증 + QA 에이전트 Self-Correction 통합 포함
 
 ---
 
@@ -54,6 +54,10 @@ MES 실시간 생산정보, 작업실적, 공정별 작업부하, 작업자 숙�
 - MES/ERP/HR/근태 데이터 통합 실시간 의사결정 구조
 - 공정 부하 예측(XGBoost/LGBM) + 작업자 역량 스코어링 + 수리최적화(OR-Tools) 결합
 - 생산성 8~15% 향상, 납기 20%+ 개선, 병목 15~30% 감소 목표
+
+---
+
+> 저장소 내비게이션 및 개발 규칙: [CLAUDE.md](CLAUDE.md)
 
 ---
 

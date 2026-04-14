@@ -222,7 +222,7 @@ Gatekeeper가 Advisor를 호출할 때, Advisor는 다음을 수행한다:
 
 Advisor는 항상 `model: "opus"` (고성능 모델)를 사용하고, 작업 에이전트는 Advisor의 지시를 따른다.
 
-> Advisor 에이전트 정의 템플릿: `references/self-correction-prompts.md`의 "Advisor 에이전트 정의" 섹션 참조.
+> Advisor + Gatekeeper 에이전트 정의 전문 (복사/붙여넣기용): `references/agent-definitions.md` 참조.
 
 ---
 

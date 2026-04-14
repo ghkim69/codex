@@ -464,5 +464,5 @@ Steps:
 [ ] Advisor 호출 후 stagnation_count = 0으로 리셋
 [ ] 이후 이터레이션에서 정상 진행 (파일 생성 확인)
 [ ] MAX_ADVISOR_CALLS 초과 시 사용자 에스컬레이션 포맷 검증
+[ ] `_workspace/`가 보존됨 (사후 교착 패턴 분석용)
 ```
-- `_workspace/`는 삭제하지 않음 — 사후 검증 및 감사 추적용
