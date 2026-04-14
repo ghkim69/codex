@@ -85,6 +85,9 @@ description: "{도메인} 에이전트 팀을 조율하는 오케스트레이터
 - 특정 팀원이 막혔을 때 SendMessage로 지시 또는 작업 재할당
 - 전체 진행률은 TaskGet으로 확인
 
+**교착 대응 (Gatekeeper-Advisor 패턴 — 장기 실행 작업에 권장):**
+이터레이션마다 `_workspace/` 파일 변화와 TaskGet 상태를 비교한다. 연속 2회 변화 없으면 교착으로 판단하고 Advisor(opus)를 호출하여 막힌 팀원에게 새 접근법을 주입한다. Advisor 호출 3회 이상 실패 시 사용자 에스컬레이션. 상세 구현: `skills/gatekeeper-advisor` 스킬 참조.
+
 ### Phase 4: {후속 작업 — 예: 검증/통합}
 1. 모든 팀원의 작업 완료 대기 (TaskGet으로 상태 확인)
 2. 각 팀원의 산출물을 Read로 수집
