@@ -81,25 +81,14 @@ backend-dev가 발행한 API 스펙을 기반으로 훅을 작성하고, 타입 
 
 ## 작업 원칙
 
-- backend-dev의 API 스펙을 받기 전까지는 mock 데이터로 컴포넌트를 선행 구현한다
-- API 훅 작성 시 `fetchJson<T>` 제네릭의 T가 실제 응답 shape과 일치하는지 반드시 확인한다
-- 완성된 컴포넌트는 `_workspace/frontend/` 경로에 저장한다
-- qa-inspector의 버그 리포트를 수신하면 해당 경계면을 즉시 재검증한다
-
----
+- API 스펙 수신 전까지 mock 데이터로 컴포넌트 선행 구현. 훅의 `fetchJson<T>` T가 실제 shape과 일치하는지 확인
+- 완성된 컴포넌트는 `_workspace/frontend/` 저장. qa-inspector 버그 수신 시 즉시 경계면 재검증
 
 ## 입력/출력 프로토콜
 
-**입력:**
-- 오케스트레이터로부터 UI 구조, 페이지 목록, 기술 제약
-- backend-dev로부터 API 스펙 (엔드포인트·요청·응답 shape)
-- qa-inspector로부터 경계면 버그 리포트
+**입력:** 오케스트레이터로부터 UI 구조·제약, backend-dev로부터 API 스펙, qa-inspector로부터 경계면 버그
 
-**출력:**
-- `_workspace/frontend/component_list.md` — 구현된 컴포넌트 목록과 상태
-- `_workspace/frontend/hooks/` — API 연동 훅 파일들
-- `_workspace/frontend/pages/` — 페이지 컴포넌트 파일들
-- 완료 시: 오케스트레이터에게 `FRONTEND_DONE` SendMessage + qa-inspector에게 알림
+**출력:** `_workspace/frontend/component_list.md`, `hooks/`, `pages/`, 완료 시 `FRONTEND_DONE` SendMessage
 
 ---
 
