@@ -169,103 +169,43 @@ title: Recovery Playbook — 소프트웨어 개발 교착 패턴 & Advisor 교�
 
 ### 사례 1 — 환경변수 DB 연결 교착 (backend-dev)
 
-**ACP 수신 (요약):** `ECONNREFUSED 127.0.0.1:5432`, 포트 변경 3회 동일 에러, Docker 환경 여부 불명
+**ACP 수신:** `ECONNREFUSED 127.0.0.1:5432`, 포트 변경 3회 동일 에러, Docker 환경 여부 불명
 
-**Advisor 응답:**
+**Advisor 교정 진단:**
+- **교착 원인:** 포트 변경에도 ECONNREFUSED 유지 = PostgreSQL 서비스 미실행 또는 Docker 네트워크 격리
+- **맹점:** 포트만 변경 — 서비스 상태·네트워크 경로 미확인
+- **교정 접근법:** 1) `pg_isready -h localhost -p 5432` 실행. 2) 미응답이면 `docker-compose up -d db`. 3) Docker 환경이면 host를 `localhost` → `db`(서비스명)으로 변경
+- **성공 기준:** `pg_isready` "accepting connections" 반환 후 `npm run migrate` 성공
 
-```markdown
-## Advisor 교정 진단
-
-**교착 원인:** 포트를 변경해도 ECONNREFUSED가 유지되는 패턴은 PostgreSQL
-서비스 자체 미실행을 가리킨다. Docker 내부라면 `localhost`가 컨테이너를
-벗어나지 못하는 네트워크 격리 문제일 수 있다.
-
-**기존 시도의 맹점:** 포트 번호만 변경하는 시도는 서비스 상태나
-네트워크 경로를 확인하지 않은 동일 방향 반복이다.
-
-**교정 접근법:**
-1. `pg_isready -h localhost -p 5432` 실행 → "accepting connections" 이면
-   연결 문자열 재확인, "no response" 이면 서비스 미실행
-2. 서비스 미실행이면 `docker-compose ps` 또는 `brew services list` 로
-   PostgreSQL 상태 확인 후 기동
-3. Docker 환경이면 DATABASE_URL의 host를 `localhost` → `db` (서비스명)으로 변경
-
-**성공 기준:** `pg_isready` 가 "accepting connections" 반환,
-이후 `npm run migrate` 에러 없이 완료
-
-**주의:** Docker Compose 내부에서 localhost는 컨테이너 자신을 가리킨다.
-다른 컨테이너의 DB에 접근하려면 서비스명을 호스트로 사용해야 한다.
-```
-
-**결과:** backend-dev가 `pg_isready` 실행 → "no response" 확인 → `docker-compose up -d db` → 연결 성공. Gatekeeper 루프 미개입으로 자율 회복.
+**결과:** `pg_isready` → "no response" → `docker-compose up -d db` → 연결 성공. Self-Correction 자율 회복.
 
 ---
 
 ### 사례 2 — API Shape 불일치 교착 (frontend-dev)
 
-**ACP 수신 (요약):** `users.map is not a function`, `{data: User[]}` 래핑 가설 65%, backend-dev 확인 불가 상태
+**ACP 수신:** `users.map is not a function`, `as any[]` 캐스팅 후 빈 화면, `{data: User[]}` 래핑 가설 65%
 
-**Advisor 응답:**
+**Advisor 교정 진단:**
+- **교착 원인:** `as any[]`로 에러 억제 = 원인 진단 없이 증상만 숨김. 실제 shape을 한 번도 출력하지 않음
+- **맹점:** 타입 캐스팅 반복 = 동일 방향 시도
+- **교정 접근법:** 1) `console.log('raw:', JSON.stringify(res))` 로 실제 shape 확인. 2) `{data: User[]}` 래핑이면 `return res.data` + 타입 `ApiResponse<User[]>` 수정. 3) `api_spec.md` 응답 스키마와 타입 동기화
+- **주의:** `as any` 제거하지 않으면 다른 컴포넌트에서 재발
 
-```markdown
-## Advisor 교정 진단
-
-**교착 원인:** ATTEMPTS에서 `as any[]`로 에러를 숨겼지만 빈 화면이 나오는
-것은 응답이 배열이 아님을 확인한다. 백엔드 확인 전에 실제 응답 구조를
-직접 로깅하면 추측을 제거할 수 있다.
-
-**기존 시도의 맹점:** 타입 캐스팅으로 에러를 숨기는 시도는 원인 진단이 아닌
-증상 억제다. 실제 응답 shape을 한 번도 출력하지 않았다.
-
-**교정 접근법:**
-1. `useUsers` 훅 내부에 `console.log('raw response:', JSON.stringify(res))`
-   추가 → 브라우저 콘솔에서 실제 shape 확인
-2. `{data: User[]}` 래핑이면 `return res.data` 로 훅 수정, 타입 정의도
-   `ApiResponse<User[]>` 제네릭으로 교체
-3. `_workspace/backend/api_spec.md` 의 응답 스키마 섹션을 재확인해서
-   타입 정의 파일과 동기화
-
-**성공 기준:** `users.map(u => u.name)` 가 에러 없이 실행되고
-UserList 컴포넌트가 실제 데이터를 렌더링함
-
-**주의:** `as any` 캐스팅을 제거하지 않으면 수정 후에도 잘못된 타입이
-숨겨져 다른 컴포넌트에서 동일 문제가 재발할 수 있다.
-```
-
-**결과:** frontend-dev가 로그 추가 → `{data: User[], total: number}` 래핑 확인 → 훅 수정 → 렌더링 성공.
+**결과:** 로그 → `{data: User[], total: number}` 확인 → 훅 수정 → 렌더링 성공.
 
 ---
 
 ### 사례 3 — QA 제네릭 캐스팅 검증 교착 (qa-inspector)
 
-**ACP 수신 (요약):** `return data as T` 패턴으로 런타임 shape 정적 확인 불가, `id` vs `_id` 필드 불확실
+**ACP 수신:** `return data as T` 패턴으로 런타임 shape 정적 확인 불가, `id` vs `_id` 불확실
 
-**Advisor 응답:**
+**Advisor 교정 진단:**
+- **교착 원인:** `as T` = 정적 분석으로 런타임 shape 검증 불가. 코드 읽기 반복은 새 정보 없음
+- **맹점:** 코드 레이어에 증거 없음 — 런타임/테스트 레이어로 이동 필요
+- **교정 접근법:** 1) `tests/fixtures/`에서 실제 응답 fixture 확인. 2) 없으면 `api_spec.md` users 스키마 필드명 확인. 3) 불확실하면 "확인 불가 — 통합 테스트 필요"로 Medium 심각도 기록 후 다음 항목 진행
+- **주의:** "확인 불가"도 유효한 QA 결과. 100% 정적 확인 집착이 더 큰 위험
 
-```markdown
-## Advisor 교정 진단
-
-**교착 원인:** `as T` 캐스팅은 TypeScript에게 신뢰를 강제하는 구문으로,
-정적 분석으로는 런타임 shape을 검증할 수 없다. 코드 읽기를 반복해도
-결론이 나지 않는 이유는 증거가 코드 레이어에 없기 때문이다.
-
-**기존 시도의 맹점:** 동일 파일을 반복 읽는 것은 새로운 정보를 생성하지 않는다.
-런타임 레이어 또는 테스트 레이어에서 실제 응답을 캡처해야 한다.
-
-**교정 접근법:**
-1. `_workspace/backend/` 의 실제 응답 fixture 파일이나
-   테스트 스냅샷에서 `id` vs `_id` 확인 (파일: tests/fixtures/)
-2. 없으면 `_workspace/backend/api_spec.md` 에서 users 스키마 필드명 직접 확인
-3. 불확실하면 "이 훅의 런타임 타입 안전성 확인 불가 — 통합 테스트 필요"로
-   `_workspace/qa-report/findings.md` 에 Medium 심각도로 기록하고 다음 항목 진행
-
-**성공 기준:** findings.md에 해당 항목 확정 상태(버그있음/없음/테스트필요) 기록
-
-**주의:** 모든 항목을 100% 정적으로 확인하려다 검증 전체가 멈추는 것이
-더 큰 위험이다. "확인 불가"도 유효한 QA 결과다.
-```
-
-**결과:** qa-inspector가 `tests/fixtures/` 확인 → `id` 필드 사용 확인 → 훅의 `_id` 참조 발견 → `BUG_FRONTEND` SendMessage. 교착 해소.
+**결과:** `tests/fixtures/` → `id` 필드 확인 → 훅의 `_id` 참조 발견 → `BUG_FRONTEND` SendMessage. 교착 해소.
 
 ---
 

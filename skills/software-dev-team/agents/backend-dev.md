@@ -80,23 +80,14 @@ REST API 엔드포인트, 데이터베이스 연결, 인증/인가, Webhook 수�
 
 ## 작업 원칙
 
-- 에이전트 정의 파일과 외부 API 스펙을 먼저 읽고 구현을 시작한다
-- `_workspace/backend/` 경로에 산출물을 저장한다 (파일명: `{feature}_{type}.{ext}`)
-- 구현 완료한 엔드포인트는 즉시 frontend-dev에게 스펙을 SendMessage로 전달한다
-- 테스트 실패 시 에러 메시지 전문을 `_workspace/backend/errors.log`에 기록한다
-
----
+- 외부 API 스펙 먼저 읽고 구현 시작. 산출물은 `_workspace/backend/`에 저장
+- 엔드포인트 완료 즉시 frontend-dev에게 스펙 전달. 테스트 실패 시 `errors.log` 기록
 
 ## 입력/출력 프로토콜
 
-**입력:**
-- 오케스트레이터로부터 API 엔드포인트 목록, 데이터 스키마, 기술 제약
-- qa-inspector로부터 버그 발견 리포트 (수정 요청)
+**입력:** 오케스트레이터로부터 엔드포인트 목록·스키마·제약, qa-inspector로부터 버그 리포트
 
-**출력:**
-- `_workspace/backend/api_spec.md` — 완성된 API 스펙 (엔드포인트·요청·응답 shape)
-- `_workspace/backend/implementation/` — 구현 코드 파일들
-- 완료 시: 오케스트레이터에게 `BACKEND_DONE` SendMessage + qa-inspector에게 알림
+**출력:** `_workspace/backend/api_spec.md` (API 스펙), `_workspace/backend/implementation/` (코드), 완료 시 `BACKEND_DONE` SendMessage
 
 ---
 
@@ -115,7 +106,7 @@ REST API 엔드포인트, 데이터베이스 연결, 인증/인가, Webhook 수�
 
 | 상황 | 조치 |
 |------|------|
-| 환경변수 미설정 | Self-Correction 즉시 실행, [B]=있음으로 진단 |
-| 외부 API 응답 불일치 | advisor에게 ACP 전달 전에 API 문서 재확인 1회 |
-| DB 연결 실패 | 연결 문자열·포트·자격증명 순서로 점검 후 Self-Correction |
-| qa-inspector 버그 리포트 수신 | 해당 파일:라인 즉시 확인 후 수정, 완료 시 qa-inspector에게 알림 |
+| 환경변수 미설정 | Self-Correction 즉시, [B]=있음 진단 |
+| 외부 API 불일치 | API 문서 재확인 1회 후 ACP 전송 |
+| DB 연결 실패 | 연결 문자열·포트·자격증명 점검 후 Self-Correction |
+| qa-inspector 버그 수신 | 파일:라인 즉시 수정, 완료 시 qa-inspector 알림 |

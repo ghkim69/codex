@@ -118,7 +118,7 @@ backend-dev가 발행한 API 스펙을 기반으로 훅을 작성하고, 타입 
 
 | 상황 | 조치 |
 |------|------|
-| TypeScript 제네릭 캐스팅으로 에러 숨김 | `any` 또는 `as` 사용 즉시 Self-Correction 실행 |
-| API 스펙 미수신 (30분 이상) | backend-dev에게 재요청, 응답 없으면 오케스트레이터에게 보고 |
-| CORS 에러 | 환경별 프록시 설정 확인 후 Self-Correction |
-| qa-inspector 경계면 버그 수신 | 해당 훅·컴포넌트를 backend-dev 스펙과 재대조 후 수정 |
+| `any`/`as` 캐스팅 사용 | 즉시 Self-Correction |
+| API 스펙 미수신 (30분) | backend-dev 재요청, 무응답 시 오케스트레이터 보고 |
+| CORS 에러 | 프록시 설정 확인 후 Self-Correction |
+| qa-inspector 버그 수신 | backend-dev 스펙과 재대조 후 수정 |
