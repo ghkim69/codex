@@ -281,6 +281,10 @@ cloud-deploy/
 - [ ] skill.md 본문이 500줄 이내, 초과 시 references/ 분리
 - [ ] 테스트 프롬프트 2~3개로 실행 검증 완료
 - [ ] 트리거 검증 (should-trigger + should-NOT-trigger) 완료
+- [ ] *(장기 실행 작업 해당 시)* Gatekeeper-Advisor 패턴 통합 여부 결정
+  - 외부 API 의존·탐색적 작업·반복 루프 가능성이 있으면 → 통합 (`skills/gatekeeper-advisor` 참조)
+  - advisor.md + gatekeeper 로직이 오케스트레이터에 추가됐는가?
+  - advisor 에이전트는 `model: "opus"`인가?
 
 ## 참고
 
@@ -290,3 +294,4 @@ cloud-deploy/
 - **스킬 작성 가이드**: `references/skill-writing-guide.md` — 작성 패턴, 예시, 데이터 스키마 표준
 - **스킬 테스트 가이드**: `references/skill-testing-guide.md` — 테스트/평가/반복 개선 방법론
 - **QA 에이전트 가이드**: `references/qa-agent-guide.md` — 빌드 하네스에 QA 에이전트를 포함할 때 참조. 통합 정합성 검증 방법론, 경계면 버그 패턴, QA 에이전트 정의 템플릿 포함. 실제 프로젝트에서 발견된 7개 버그 사례 기반.
+- **교착 감지 & Advisor 판단**: `skills/gatekeeper-advisor/skill.md` — 에이전트 교착 시 Advisor 호출 기준, ACP 압축 포맷, 에이전트 정의 템플릿.
