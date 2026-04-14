@@ -142,59 +142,106 @@ Advisor에게: 불명확한 요구사항에 대한 결정 기준 요청
 
 ---
 
-## 3. Advisor 호출 컨텍스트 예시
+## 3. ACP 작성 예시 (압축 전/후 비교)
 
-### 예시 A: 코드 구현 교착
+Advisor에게 전달하는 컨텍스트는 ACP(Advisor Context Package) 포맷으로 압축한다.
+압축하지 않으면 Advisor가 노이즈 필터링에 추론을 낭비하고 진단 품질이 저하된다.
 
-```
-## Advisor 호출 컨텍스트
+### 예시 A: 코드 구현 교착 (환경 변수 문제)
 
-호출 이유: [C]=낮음 AND [D]=아니오 — 같은 에러를 4번 수정했지만 해결 안 됨
-
-현재 목표:
-Next.js API route에서 Supabase 데이터를 fetch하여 프론트 훅으로 전달하는 것
-
-지금까지 시도한 방법:
-1. `createClient()` 직접 호출 → "supabaseUrl is required" 에러
-2. `createServerClient()`로 변경 → 동일 에러
-3. 환경 변수 이름을 `NEXT_PUBLIC_` 접두사 추가 → 동일 에러
-4. `.env.local` 파일 다시 확인, 값 재확인 → 동일 에러
-
-막힌 지점:
-환경 변수는 분명히 설정됐는데 Supabase 클라이언트가 읽지 못함.
-`process.env`로 직접 출력하면 `undefined`가 나옴.
-
-가설:
-Next.js의 환경 변수 로딩 타이밍 문제인지, 아니면 서버 컴포넌트에서의 접근 방식 문제인지 모르겠음.
-
-요청:
-Supabase + Next.js 13 App Router에서 서버 사이드 환경 변수 올바른 접근 방법 알려줘.
-```
-
-### 예시 B: 리서치 교착
+**압축 전 — 전체 히스토리 전달 (❌ 비효율, ~420 토큰):**
 
 ```
-## Advisor 호출 컨텍스트
+Advisor, 도와줘. Next.js와 Supabase를 연결하려고 하는데 계속 문제가 생겨.
 
-호출 이유: [D]=아니오 3회 연속 — 같은 키워드로만 검색하고 있음
+배경: 우리 프로젝트는 Next.js 14 App Router를 쓰고 있고, Supabase를 백엔드로 사용해.
+처음에 createClient()를 직접 api/route.ts에서 호출했는데 "supabaseUrl is required"라는
+에러가 났어. 그래서 공식 문서를 보니까 서버 사이드에서는 createServerClient()를 써야 한다고
+해서 변경했는데 여전히 같은 에러야. 혹시 환경 변수 이름 문제인가 해서
+NEXT_PUBLIC_SUPABASE_URL로 바꿨는데 그래도 안 돼. .env.local 파일을 열어서 직접 확인해보니
+값은 분명히 있는데 process.env로 읽으면 undefined가 나와. 정말 모르겠어.
 
-현재 목표:
-Redis Cluster와 Redis Sentinel의 실제 운영 사례 비교
+내가 시도한 것들:
+- createClient() → supabaseUrl is required 에러
+- createServerClient()로 변경 → 동일 에러  
+- NEXT_PUBLIC_ 접두사 추가 → 동일 에러
+- .env.local 값 재확인 → 값은 있는데 읽기가 안 됨
 
-지금까지 시도한 방법:
-1. "Redis Cluster vs Sentinel" 검색 → 공식 문서만 반복
-2. "Redis high availability comparison" 검색 → 동일 결과
-3. "Redis Cluster production" 검색 → 마케팅 문서만
-
-막힌 지점:
-실제 운영 관점의 트레이드오프(운영 복잡성, 장애 복구 시간)를 다루는 실질적인 자료를 못 찾음
-
-가설:
-공식 문서 중심 검색이 아닌 기술 블로그나 커뮤니티 위주로 전략을 바꿔야 할 것 같음
-
-요청:
-실제 운영 사례 중심으로 비교 자료를 찾을 수 있는 검색 전략과 핵심 질문 제시
+Supabase + Next.js 13 App Router에서 서버 사이드 환경 변수를 어떻게 써야 해?
 ```
+
+**압축 후 — ACP 포맷 (✅ 효율, ~180 토큰):**
+
+```
+## ACP
+
+[TRIGGER] C=낮음 + D=아니오 (4회 동일 에러)
+[GOAL]    Next.js 14 App Router route.ts에서 Supabase 클라이언트 초기화
+[HARD_CONSTRAINTS] Next.js 14, App Router, Supabase JS v2, .env.local 사용
+[ATTEMPTS]
+  A1: [라이브러리 호출] createClient() → "supabaseUrl is required"
+  A2: [API 변경] createServerClient() → 동일 에러
+  A3: [환경변수명] NEXT_PUBLIC_ 접두사 추가 → 동일 에러
+  A4: [파일 확인] .env.local 값 재확인 → process.env 출력 시 undefined
+[BLOCKER]
+  type: ConfigurationError
+  loc:  app/api/route.ts:3
+  msg:  "supabaseUrl is required" (createClient 초기화 시점)
+[HYPOTHESIS]
+  H1 (60%): Next.js 서버 컴포넌트에서 NEXT_PUBLIC_ 없는 변수는 런타임에만 주입됨
+  H2 (30%): .env.local이 올바른 위치(프로젝트 루트)에 없음
+[ASK] App Router route.ts에서 서버 전용 환경 변수를 Supabase에 전달하는 올바른 방법은?
+```
+
+절감 효과: ~420 → ~180 토큰 (57% 감소). Advisor는 진단에만 집중할 수 있다.
+
+---
+
+### 예시 B: 리서치 교착 (검색 전략 막힘)
+
+**압축 전 (❌ ~280 토큰):**
+
+```
+Redis Cluster와 Redis Sentinel 비교 자료를 찾고 있는데 도움이 필요해.
+"Redis Cluster vs Sentinel"로 검색했는데 공식 문서만 나오고,
+"Redis high availability comparison"으로도 검색했는데 비슷한 결과야.
+"Redis Cluster production"으로도 해봤는데 마케팅 문서들만 나와.
+실제 운영 관점의 트레이드오프 자료를 못 찾겠어. 어떻게 검색하면 될까?
+```
+
+**압축 후 — ACP (✅ ~120 토큰):**
+
+```
+## ACP
+
+[TRIGGER] D×3회 (동일 유형 검색 반복)
+[GOAL]    Redis Cluster vs Sentinel 운영 트레이드오프 파악 (장애복구 시간, 운영 복잡성)
+[HARD_CONSTRAINTS] 없음
+[ATTEMPTS]
+  ×3: [키워드 검색] "Redis Cluster/HA/production" 변형 → 공식문서/마케팅만
+[BLOCKER]
+  type: 정보 접근 불가
+  loc:  없음 (출력 부재)
+  msg:  실제 운영 경험 기반 비교 자료 없음
+[HYPOTHESIS]
+  H1 (80%): 공식문서 중심 검색어 → 기술 블로그/포스트모텀 검색어로 전환 필요
+[ASK] "운영 경험 기반" 비교 자료를 찾는 검색 전략 3가지 제시해줘
+```
+
+---
+
+### ACP 작성 시 제외할 것
+
+다음은 Advisor에게 전달해도 진단에 도움이 되지 않는 내용이다. 모두 제외한다:
+
+| 제외 대상 | 이유 | 대체 표현 |
+|----------|------|----------|
+| 전체 파일 내용 | Advisor가 직접 읽을 수 있음 | `loc: app/api/route.ts:3` (경로만) |
+| 전체 스택 트레이스 | 첫 줄만 의미 있음 | `msg:` 에 첫 줄만 |
+| 시도의 이유와 추론 과정 | 결과만 필요 | `→ {결과 5단어}` |
+| 배경 설명 | Advisor는 도메인 지식 보유 | 생략 |
+| 동일 에러 N회 반복 | 패턴만 전달 | `×N: [반복]` |
+| 성공한 초기 단계 | 현재 막힌 지점만 중요 | 생략 |
 
 ---
 

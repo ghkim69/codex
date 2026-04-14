@@ -66,22 +66,33 @@ Gatekeeper는 두 방향에서 작동한다:
 
 **왜 이 규칙인가:** "낮은 신뢰도 + 반복 패턴"은 에이전트가 같은 실수를 반복하고 있다는 신호다. 이 상태에서 계속 진행하면 토큰만 소모하고 결과는 나오지 않는다. Advisor는 새로운 관점으로 접근법을 재설정할 수 있다.
 
-### 1-4. Advisor 호출 컨텍스트 포맷
+### 1-4. Advisor 호출 컨텍스트 — ACP 포맷
 
-Advisor를 호출할 때 다음 정보를 반드시 포함한다:
+Advisor(Opus)는 고성능이지만 토큰 비용도 높다. 전체 히스토리를 그대로 전달하면 Advisor가 노이즈를 걸러내는 데 추론을 낭비하고, 실제 진단 품질은 오히려 떨어진다. **ACP(Advisor Context Package)**는 Advisor가 진단에 필요한 정보만 추출한 압축 포맷이다.
 
 ```
-## Advisor 호출 컨텍스트
+## ACP (Advisor Context Package)
 
-**호출 이유:** {결정 규칙 중 어떤 조건이 충족됐는지}
-**현재 목표:** {달성하려는 최종 목표}
-**지금까지 시도한 방법:** {최근 N번의 시도 요약 — 무엇을, 왜 했는지}
-**막힌 지점:** {정확히 어디서 어떤 이유로 진전이 없는지}
-**가설:** {내가 놓치고 있을 것 같은 것}
-**요청:** {Advisor에게 원하는 것 — 방향 재설정? 구체적 해결책? 접근법 검토?}
+[TRIGGER] {결정 규칙 코드 — 예: C=낮음+D=아니오, D×3회, P≤25+R=아니오}
+[GOAL]    {달성하려는 목표 — 2문장 이내, 구현 세부사항 제외}
+[HARD_CONSTRAINTS] {변경 불가능한 기술 제약 — 예: Node 18, Postgres 14, 외부 API 스펙 고정}
+[ATTEMPTS]
+  A1: [{접근법 유형}] {시도 내용 한 줄} → {결과 5단어}
+  A2: [{접근법 유형}] {시도 내용 한 줄} → {결과 5단어}
+  ×N: [반복] {동일 접근 N회 반복} → {동일 에러}
+[BLOCKER]
+  type: {에러 유형 — TypeError/NetworkError/LogicError/등}
+  loc:  {파일:라인 또는 "없음(출력 부재)"}
+  msg:  {에러 메시지 첫 줄, 100자 이내}
+[HYPOTHESIS]
+  H1 ({신뢰도}%): {가설 한 문장}
+  H2 ({신뢰도}%): {가설 한 문장}
+[ASK] {Advisor에게 원하는 것 — 한 문장, 가능하면 Yes/No 또는 선택지 형태}
 ```
 
-> 상세 프롬프트 변형과 도메인별 예시는 `references/self-correction-prompts.md` 참조.
+**토큰 버짓 목표:** 전체 ACP ≤ 500 토큰. 각 섹션의 세부 한도와 압축 규칙은 `references/context-compression.md` 참조.
+
+> 도메인별 ACP 작성 예시(압축 전/후 비교 포함): `references/self-correction-prompts.md` 참조.
 
 ---
 
@@ -161,8 +172,9 @@ StateSnapshot = {
    Agent(
      subagent_type: "advisor",
      model: "opus",
-     prompt: "[Advisor 호출 컨텍스트 포맷 채워서 전달]"
+     prompt: "[ACP 포맷으로 압축한 컨텍스트 — TRIGGER=Outer Loop, ATTEMPTS는 스냅샷 델타로 구성]"
    )
+   # ACP 구성 상세: references/context-compression.md의 "Outer Loop ACP" 섹션 참조
 6. Advisor 출력을 막힌 팀원에게 SendMessage로 전달
 7. 재모니터링 시작
 ```
@@ -185,7 +197,9 @@ while attempt < MAX_ATTEMPTS:
     advisor_output = Agent(
       subagent_type: "advisor",
       model: "opus",
-      prompt: build_advisor_context(current_task, snapshot_history)
+      prompt: build_acp(current_task, snapshot_history)
+      # build_acp: 전체 히스토리 대신 ACP 포맷으로 압축
+      # 구현 상세: references/context-compression.md 참조
     )
     current_task = incorporate_advice(current_task, advisor_output)
     attempt = 0  # 리셋
@@ -251,3 +265,4 @@ Advisor는 항상 `model: "opus"` (고성능 모델)를 사용하고, 작업 에
 
 - 도메인별 자가 진단 프롬프트 변형 및 Advisor 에이전트 정의: `references/self-correction-prompts.md`
 - Outer Loop 상태 추적 상세 구현 및 다중 에이전트 교착 감지: `references/outer-loop-stagnation.md`
+- **ACP 압축 알고리즘, 토큰 버짓, 섹션별 압축 규칙**: `references/context-compression.md`
