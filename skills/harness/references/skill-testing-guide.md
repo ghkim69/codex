@@ -304,4 +304,165 @@ description 최적화가 필요한 경우:
 **규칙:**
 - eval 디렉토리는 숫자가 아닌 **서술적 이름** 사용 (예: `eval-multi-page-table-extraction`)
 - 각 iteration은 독립 디렉토리에 보존 (이전 iteration 덮어쓰기 금지)
+
+---
+
+## 9. 행동 패턴 테스트 (Gatekeeper-Advisor)
+
+Gatekeeper-Advisor처럼 **타이밍·상태 변화에 반응하는 행동 패턴**은 일반 스킬과 다른 테스트 접근이 필요하다. "올바른 파일을 생성했는가"가 아니라 "올바른 시점에 올바른 결정을 했는가"를 검증한다.
+
+### 9-1. 테스트 대상 행동
+
+| 행동 | 검증 질문 |
+|------|---------|
+| Self-Correction 트리거 | 조건 충족 시 호출됐는가? 조건 미충족 시 억제됐는가? |
+| Outer Loop 교착 감지 | 2회 무변화 후 Advisor가 호출됐는가? |
+| ACP 품질 | 토큰이 680 이내인가? 핵심 정보가 빠지지 않았는가? |
+| 에스컬레이션 | MAX_ADVISOR_CALLS 초과 시 사용자에게 보고됐는가? |
+| 비개입 | 정상 진행 중에는 Advisor를 호출하지 않았는가? |
+
+### 9-2. Self-Correction 트리거 타이밍 테스트
+
+**테스트 방식:** 조작된 자가 진단 결과(mock)를 입력으로 주고, 결정 규칙 테이블의 판단이 맞는지 확인한다.
+
+```
+# 테스트 케이스 작성 형식
+
+케이스 ID | [P] | [C] | [D] | [B] | [R] | 예상 판단
+TC-01    |  25 | 낮음 | 아니오 | 있음 | 아니오 | Advisor 호출 필수 ← C=낮음+D=아니오
+TC-02    |  75 | 높음 | 예   | 없음 | 예   | 계속 진행
+TC-03    |  50 | 중간 | 예   | 있음 | 예   | Advisor 호출 권장 ← B=있음+C=중간
+TC-04    |  25 | 중간 | 아니오 | 없음 | 아니오 | Advisor 호출 필수 ← P≤25+R=아니오
+
+경계 케이스 (near-miss):
+TC-05    |  50 | 중간 | 예   | 없음 | 예   | 계속 진행 (C=중간+D=예는 호출 안 함)
+TC-06    |  75 | 낮음 | 예   | 없음 | 예   | 계속 진행 (C=낮음이지만 D=예, B=없음, P높음)
+```
+
+**[D]=아니오 연속 카운터 테스트 (중요):**
+```
+# 3회 연속 [D]=아니오 → 필수 호출
+이터레이션 1: D=아니오 → count=1, 호출 안 함
+이터레이션 2: D=아니오 → count=2, 호출 안 함
+이터레이션 3: D=아니오 → count=3, Advisor 호출 필수
+
+# 중간에 D=예가 오면 리셋
+이터레이션 1: D=아니오 → count=1
+이터레이션 2: D=예    → count=0 (리셋)
+이터레이션 3: D=아니오 → count=1, 호출 안 함
+```
+
+### 9-3. Outer Loop 교착 감지 테스트
+
+**테스트 방식:** StateSnapshot 시퀀스를 직접 구성하여 `compare_snapshots`의 판단을 검증한다.
+
+```
+# 교착 감지 테스트 케이스
+
+케이스 A: 명확한 교착
+  snapshot[1]: files=[{path:"01.md", size:0, mtime:"T1"}], tasks=[{status:"in_progress"}]
+  snapshot[2]: files=[{path:"01.md", size:0, mtime:"T1"}], tasks=[{status:"in_progress"}]
+  예상: is_meaningful=false → stagnation_count=1
+
+  snapshot[3]: snapshot[2]와 동일
+  예상: is_meaningful=false → stagnation_count=2 → Advisor 호출
+
+케이스 B: 의미 없는 변화 (교착으로 인정 안 함)
+  snapshot[2]: files에 temp.lock 추가됨
+  예상: is_meaningful=false (임시 파일 필터)
+
+케이스 C: 정상 진행
+  snapshot[2]: files에 새 파일 추가, size > 0
+  예상: is_meaningful=true → stagnation_count=0
+
+케이스 D: 재시도 메시지 필터
+  snapshot[2]: output_summary="다시 시도합니다" (snapshot[1]과 동일 패턴)
+  예상: is_meaningful=false (재시도 메시지 필터)
+```
+
+### 9-4. ACP 품질 검증
+
+**측정 지표:**
+
+```
+# 각 Advisor 호출에 대해 다음을 측정
+
+1. 토큰 수:
+   acp_tokens = len(tokenize(acp))
+   assert acp_tokens <= 680, f"ACP 상한 초과: {acp_tokens}"
+
+2. 필수 섹션 존재:
+   assert "[TRIGGER]" in acp
+   assert "[GOAL]" in acp
+   assert "[ATTEMPTS]" in acp
+   assert "[BLOCKER]" in acp
+   assert "[ASK]" in acp
+
+3. 기각된 가설 제거 확인:
+   # [ATTEMPTS]에 있는 접근법이 [HYPOTHESIS]에 재등장하지 않아야 함
+
+4. 압축률 측정 (선택):
+   raw_context_tokens = len(tokenize(full_history))
+   compression_ratio = acp_tokens / raw_context_tokens
+   # 목표: 50% 이상 압축 (compression_ratio < 0.5)
+```
+
+**ACP 품질 체크리스트 자동화:**
+```python
+def validate_acp(acp_text, full_history_text):
+    checks = {
+        "token_budget": len(tokenize(acp_text)) <= 680,
+        "has_trigger": "[TRIGGER]" in acp_text,
+        "has_goal": "[GOAL]" in acp_text,
+        "has_attempts": "[ATTEMPTS]" in acp_text,
+        "has_blocker": "[BLOCKER]" in acp_text,
+        "has_ask": "[ASK]" in acp_text,
+        "single_ask": acp_text.count("[ASK]") == 1,
+        "compression_50pct": len(tokenize(acp_text)) < len(tokenize(full_history_text)) * 0.5
+    }
+    failed = [k for k, v in checks.items() if not v]
+    return len(failed) == 0, failed
+```
+
+### 9-5. 비개입 테스트 (과도한 호출 방지)
+
+정상 진행 중인 에이전트에 대해 Advisor가 **호출되지 않아야** 하는 케이스:
+
+```
+# 비개입 시나리오
+
+시나리오 1: 모든 이터레이션에서 파일이 꾸준히 증가
+  → Advisor 호출 횟수: 0 (stagnation_count이 2에 도달하지 않음)
+
+시나리오 2: Self-Correction 결과 [C]=높음
+  → Advisor 호출 없음 (결정 규칙 미충족)
+
+시나리오 3: 1회 지연 후 즉시 회복 (stagnation_count=1로 리셋)
+  → Advisor 호출 없음 (임계값 2 미달)
+```
+
+**비개입 테스트가 중요한 이유:** Advisor를 너무 자주 호출하면 Opus 비용이 급증한다. "호출 안 해야 할 때 호출 안 하는" 것도 "호출해야 할 때 호출하는" 것만큼 중요하다.
+
+### 9-6. 엔드-투-엔드 행동 검증
+
+단위 테스트 외에 전체 흐름을 검증하는 시나리오 테스트:
+
+```
+시나리오: 교착 감지 → ACP 생성 → Advisor 호출 → 해소 → 재모니터링
+
+Steps:
+1. 교착 에이전트 시뮬레이션 (2회 이상 동일 상태 스냅샷)
+2. Advisor 호출 여부 확인 (횟수, 타이밍)
+3. ACP 품질 검증 (9-4 체크리스트)
+4. Advisor 응답 후 stagnation_count 리셋 확인
+5. 재모니터링 재개 확인
+6. 최종 산출물 생성 확인 (_workspace/에 파일 생성)
+
+성공 기준:
+[ ] Advisor가 정확히 stagnation_count=2 시점에 1회 호출됨
+[ ] ACP 토큰 ≤ 680
+[ ] Advisor 호출 후 stagnation_count = 0으로 리셋
+[ ] 이후 이터레이션에서 정상 진행 (파일 생성 확인)
+[ ] MAX_ADVISOR_CALLS 초과 시 사용자 에스컬레이션 포맷 검증
+```
 - `_workspace/`는 삭제하지 않음 — 사후 검증 및 감사 추적용

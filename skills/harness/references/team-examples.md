@@ -311,6 +311,243 @@ test ────SendMessage──→ security      ("인증 모듈 테스트 �
 
 ---
 
+## 예시 6: 결제 API 통합 개발 (Gatekeeper-Advisor 통합)
+
+### 팀 아키텍처: 파이프라인 + Gatekeeper-Advisor 횡단 층
+### 실행 모드: 에이전트 팀
+
+이 예시는 Gatekeeper-Advisor 패턴이 기존 아키텍처에 **어떻게 얹히는지**를 보여준다. backend-dev는 Self-Correction으로 자신의 교착을 감지하고, 오케스트레이터는 Outer Loop로 frontend-dev의 교착을 외부에서 잡는다.
+
+```
+[오케스트레이터]
+    ├── Phase 1: 요구사항 분석
+    ├── Phase 2: 팀 구성 (backend-dev + frontend-dev + advisor)
+    ├── Phase 3: 병렬 개발 + Gatekeeper 모니터링
+    │     ├── backend-dev: 결제 API 구현 (Self-Correction 내장)
+    │     ├── frontend-dev: 결제 UI 구현
+    │     └── [오케스트레이터 Outer Loop 감시]
+    ├── Phase 4: 통합 테스트
+    └── Phase 5: 정리
+```
+
+### 에이전트 구성
+
+| 팀원 | 에이전트 타입 | 역할 | 출력 |
+|------|-------------|------|------|
+| backend-dev | 커스텀 | 결제 API + Webhook 구현 (Self-Correction 내장) | `_workspace/02_backend_api.md` |
+| frontend-dev | 커스텀 | 결제 UI + 훅 구현 | `_workspace/02_frontend_ui.md` |
+| advisor | 커스텀 | 교착 해소 (Gatekeeper 호출 시만 활성화) | 즉시 반환 |
+
+### Self-Correction 내장 에이전트: `backend-dev.md` 전문
+
+```markdown
+---
+name: backend-dev
+description: "백엔드 API 구현 전문가. 결제, 인증, 데이터 파이프라인 구현."
+---
+
+# Backend Developer
+
+## 핵심 역할
+결제 API와 Webhook 엔드포인트를 구현한다.
+
+## Self-Correction 프로토콜 (필수)
+
+**매 3회 도구 호출 사이클마다, 또는 에러 발생 즉시 자가 진단을 실행한다:**
+
+```
+[P] 구현 완료 비율? (0/25/50/75/100)
+[C] 현재 접근법 성공 확신? (낮음/중간/높음)
+[D] 최근 시도가 서로 다른 접근법이었나? (예/아니오)
+[B] 해결 안 된 에러나 블로커 있나? (있음/없음)
+[R] 시도 횟수 대비 진전이 납득할 만한가? (예/아니오)
+```
+
+판단 규칙:
+- [C]=낮음 AND [D]=아니오: Advisor 호출 → advisor에게 SendMessage(ACP 포맷)
+- [D]=아니오 3회 연속: Advisor 호출 필수
+- [P]≤25 AND [R]=아니오: Advisor 호출 필수
+
+Advisor 호출 시 ACP 포맷 준수 (전체 히스토리 전달 금지):
+```
+[TRIGGER] {결정 규칙 코드}
+[GOAL]    {구현 목표 2문장}
+[HARD_CONSTRAINTS] {변경 불가 기술 제약}
+[ATTEMPTS] A1~AN (각 1줄, ×N 콜랩스 적용)
+[BLOCKER] type/loc/msg
+[HYPOTHESIS] H1/H2 (신뢰도%)
+[ASK] {단일 질문}
+```
+
+## 팀 통신 프로토콜
+- frontend-dev에게: API 스펙 확정 시 SendMessage (엔드포인트, 응답 shape)
+- advisor에게: Self-Correction 임계값 충족 시 SendMessage(ACP)
+- advisor로부터: 진단 결과 수신 → 권장 접근법 따르기
+
+## 에러 핸들링
+- 빌드 에러: 즉시 자가 진단 실행
+- 타임아웃: 현재까지 완성된 부분 `_workspace/02_backend_partial.md`에 저장
+```
+
+### 오케스트레이터 워크플로우 전문
+
+```
+Phase 1: 준비
+  - 사용자가 제공한 결제 API 요구사항 분석
+  - _workspace/00_requirements.md에 요구사항 저장
+  - _workspace/ 디렉토리 생성
+
+Phase 2: 팀 구성
+  TeamCreate(
+    team_name: "payment-dev-team",
+    members: [
+      { name: "backend-dev", agent_type: "backend-dev", model: "opus",
+        prompt: "_workspace/00_requirements.md의 결제 API를 구현.
+                 Self-Correction 프로토콜을 매 3회 사이클마다 실행.
+                 완료 시 _workspace/02_backend_api.md 생성." },
+      { name: "frontend-dev", agent_type: "frontend-dev", model: "opus",
+        prompt: "backend-dev의 API 스펙을 받은 후 결제 UI와 React 훅 구현.
+                 완료 시 _workspace/02_frontend_ui.md 생성." },
+      { name: "advisor", agent_type: "advisor", model: "opus",
+        prompt: "교착 해소 Advisor. backend-dev 또는 오케스트레이터로부터
+                 ACP를 수신할 때만 응답. 진단 결과를 호출자에게 즉시 반환." }
+    ]
+  )
+  TaskCreate(tasks: [
+    { title: "결제 API 구현", assignee: "backend-dev" },
+    { title: "결제 UI 구현", assignee: "frontend-dev",
+      depends_on: ["결제 API 구현"] }  # API 스펙 확정 후 시작
+  ])
+
+Phase 3: 개발 + Gatekeeper 모니터링
+
+  # --- Gatekeeper 상태 변수 ---
+  stagnation = { "backend-dev": 0, "frontend-dev": 0 }
+  advisor_count = 0
+  prev_snapshot = null
+
+  # 팀원들이 자체 조율하며 개발 진행
+  # (backend-dev는 Self-Correction을 내부적으로 실행하며 필요 시 advisor 직접 호출)
+
+  # 오케스트레이터 Outer Loop (팀원 idle 알림마다 또는 5분마다)
+  이터레이션마다:
+    current_snapshot = {
+      files: Glob("_workspace/02_*.md"),
+      tasks: TaskGet()
+    }
+
+    for agent in ["backend-dev", "frontend-dev"]:
+      if task_{agent}.status == "done": continue
+
+      file_changed = _workspace/02_{agent}_*.md 크기 또는 mtime 변화
+      task_changed = task_{agent}.status가 prev와 다름
+
+      if file_changed OR task_changed:
+        stagnation[agent] = 0
+      else:
+        stagnation[agent] += 1
+
+      if stagnation[agent] >= 2 AND advisor_count < 3:
+        # backend-dev는 Self-Correction으로 먼저 감지할 수 있음
+        # frontend-dev는 Outer Loop로 감지
+        acp = build_acp(agent, current_snapshot, stagnation[agent])
+        SendMessage(to: "advisor", message: acp)
+        stagnation[agent] = 0
+        advisor_count += 1
+
+    prev_snapshot = current_snapshot
+
+Phase 4: 통합 테스트
+  - _workspace/02_backend_api.md와 _workspace/02_frontend_ui.md Read
+  - API shape과 훅 타입 교차 검증 (qa-agent-guide.md 경계면 검증 패턴 참조)
+  - 통합 테스트 결과를 _workspace/04_integration_test.md에 저장
+
+Phase 5: 정리
+  - TeamDelete
+  - _workspace/ 보존
+  - 최종 결과 및 Gatekeeper 개입 이력 보고
+```
+
+### 실제 교착 시나리오 — backend-dev Self-Correction 발동
+
+backend-dev가 Webhook 서명 검증에서 3회 연속 같은 에러 발생:
+
+```
+# backend-dev 내부 자가 진단 (이터레이션 4):
+
+[P] 50     ← Webhook 엔드포인트 구조는 만들었지만 서명 검증 실패
+[C] 낮음   ← HMAC 검증인지 RSA인지도 모르겠음
+[D] 아니오 ← 같은 crypto.timingSafeEqual 코드를 3번 수정만 함
+[B] 있음   ← "Invalid signature" 에러 (어느 방식인지 불명확)
+[R] 아니오 ← 3번 시도했는데 [P]가 그대로
+
+판단: C=낮음 + D=아니오 → advisor에게 SendMessage
+```
+
+advisor에게 전달되는 ACP (~160 토큰):
+
+```
+## ACP
+
+[TRIGGER] C=낮음+D=아니오
+[GOAL]    결제 게이트웨이 Webhook 서명 검증 구현 (POST /webhook)
+[HARD_CONSTRAINTS] Node.js 18, 결제사 SDK 고정 (변경 불가)
+[ATTEMPTS]
+  A1: [라이브러리] crypto.timingSafeEqual로 HMAC 비교 → "Invalid signature"
+  ×2: [파라미터] secret key 인코딩 변경 (base64/hex) → 동일 에러
+[BLOCKER]
+  type: AuthenticationError
+  loc:  src/webhook/handler.ts:34
+  msg:  "Invalid signature (결제사 응답 없음)"
+[HYPOTHESIS]
+  H1 (65%): 결제사가 HMAC-SHA256이 아닌 RSA-SHA256 서명 사용
+  H2 (25%): raw body 대신 parsed body로 서명 검증 중
+[ASK] 이 결제사의 Webhook 서명 검증 올바른 방식은? (HMAC vs RSA, body 처리 방식)
+```
+
+advisor 진단 결과:
+
+```
+## Advisor 진단
+
+근본 원인: raw body 소실 문제. Express의 bodyParser가 먼저 실행되면
+서명 검증에 필요한 raw body가 파기된다. crypto 방식보다 이것이 먼저다.
+
+왜 기존 시도가 효과 없었나: 서명 알고리즘을 변경했지만, 알고리즘보다
+body 수집 순서가 근본 원인이다.
+
+권장 접근법:
+1. bodyParser 이전에 raw body를 `Buffer`로 캡처:
+   express.raw({ type: 'application/json' })을 webhook 라우트에만 적용
+2. 캡처된 raw buffer로 HMAC-SHA256 재검증
+3. 그래도 실패하면 결제사 대시보드에서 webhook secret 재확인
+
+성공 기준: 결제사 테스트 이벤트 수신 시 200 OK 응답
+
+주의: global bodyParser가 webhook 라우트를 덮어쓰지 않도록 라우트 순서 확인
+```
+
+backend-dev는 이 지시에 따라 이터레이션 5에서 성공.
+
+### 팀 통신 패턴
+
+```
+backend-dev ──Self-Correction──→ advisor  (ACP 직접 SendMessage)
+advisor ──────진단 결과──────────→ backend-dev
+오케스트레이터 ──Outer Loop──→ advisor  (frontend-dev 교착 시 ACP SendMessage)
+advisor ──────진단 결과──────────→ frontend-dev (오케스트레이터가 중계)
+backend-dev ──API 스펙──────────→ frontend-dev (API 확정 후)
+```
+
+### Gatekeeper-Advisor 사용 판단 기준
+
+이 예시처럼 다음 조건 중 하나라도 해당하면 Gatekeeper-Advisor를 통합한다:
+- 외부 API·서드파티 서비스 의존 (실패 가능성이 사전에 불명확)
+- 에이전트가 새로운 도메인에서 작업 (선행 지식 부족)
+- 작업 시간이 길어질수록 교착 감지가 늦어지는 단일 에이전트 구조
+
+---
+
 ## 산출물 패턴 요약
 
 ### 에이전트 정의 파일
