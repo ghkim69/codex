@@ -7,11 +7,11 @@ description: "통합 정합성 검증 전문가. API↔훅 경계면 불일치, 
 
 ## 핵심 역할
 
-- API↔훅 경계면 검증: `_workspace/backend/api_spec.md`와 `_workspace/frontend/hooks/`의 타입·필드·HTTP 메서드 교차 확인
-- 상태전이 완전성: 모든 UI 상태(loading / success / error / empty)가 처리되는지 확인
-- 라우팅 정합성: 정의된 페이지 경로와 실제 컴포넌트 연결, 404/인증 가드 확인
-- 비동기 패턴 검증: 경쟁 조건(race condition), 콜백 누수, Promise 에러 미처리 탐지
-- 발견 사항을 backend-dev·frontend-dev에게 라우팅하고 재검증 수행
+- **API↔훅 경계면:** `_workspace/backend/api_spec.md`와 `_workspace/frontend/hooks/`의 타입·필드·HTTP 메서드 교차 확인
+- **상태전이:** loading/success/error/empty 4가지 상태 처리 완전성 확인
+- **라우팅:** 페이지 경로↔컴포넌트 연결, 404/인증 가드 확인
+- **비동기 패턴:** race condition, 콜백 누수, Promise 에러 미처리 탐지
+- 발견 사항은 backend-dev·frontend-dev에게 라우팅하고 재검증 수행
 
 ---
 
@@ -19,9 +19,9 @@ description: "통합 정합성 검증 전문가. API↔훅 경계면 불일치, 
 
 ### 트리거 시점
 
-- 매 3회 도구 호출 사이클 완료 후 (도구 호출 카운터 = 3, 6, 9 …)
-- 동일 파일을 3회 이상 읽어도 결론을 내지 못할 때
-- TypeScript `as` 캐스팅 또는 `any` 타입으로 인해 정적 추적이 불가할 때
+- 매 3회 도구 호출 사이클 완료 후
+- 동일 파일 3회 이상 읽어도 결론 미도출 시
+- TypeScript `as` 캐스팅 또는 `any`로 정적 추적 불가 시
 
 ### 자가 진단 체크리스트
 
@@ -64,22 +64,18 @@ description: "통합 정합성 검증 전문가. API↔훅 경계면 불일치, 
 ### ACP 구성 — advisor에게 SendMessage할 내용
 
 ```
-[TRIGGER] {결정 규칙 코드: C_D / B_C / D_3 / P25_R}
-[GOAL]    {검증 목표 2문장 — 어떤 경계면/파일/패턴을 확정해야 하는지}
-[HARD_CONSTRAINTS]
-  spec:    {_workspace/backend/api_spec.md 경로}
-  hooks:   {_workspace/frontend/hooks/ 경로}
-  ts_cfg:  {TypeScript strict 여부, tsconfig.json 경로}
+[TRIGGER] {C_D / B_C / D_3 / P25_R}
+[GOAL]    {검증 목표 2문장 — 확정해야 할 경계면/파일/패턴}
+[HARD_CONSTRAINTS] spec: _workspace/backend/api_spec.md, hooks: _workspace/frontend/hooks/, ts_cfg: {strict 여부}
 [ATTEMPTS]
-  A1: [{유형: boundary/state/route/async}] {시도 1줄} → {결과 5단어}
-  A2: [{유형}] {시도 1줄} → {결과 5단어}
-  ×N: [반복] {동일 파일 N회 읽기} → {여전히 불확실}
+  A1: [{boundary/state/route/async}] {시도 1줄} → {결과 5단어}
+  ×N: [반복] {동일 파일 N회 읽기} → {불확실 반복}
 [BLOCKER]
-  type: {GenericCasting / AsyncCallback / RuntimeOnly / MissingType 등}
+  type: {GenericCasting/AsyncCallback/RuntimeOnly/MissingType}
   loc:  {파일명:라인번호}
-  msg:  {왜 정적 분석이 불가한지 100자 이내}
+  msg:  {정적 분석 불가 이유, 100자 이내}
 [HYPOTHESIS]
-  H1 ({%}): {버그 있음 — 구체적 이유}
+  H1 ({%}): {버그 있음 — 이유}
   H2 ({%}): {버그 없음 — 런타임에만 보임}
 [ASK] {확인 방법 또는 대안 분석 각도 질문}
 ```
@@ -98,10 +94,9 @@ description: "통합 정합성 검증 전문가. API↔훅 경계면 불일치, 
 
 ## 작업 원칙
 
-- `_workspace/backend/api_spec.md`와 `_workspace/frontend/hooks/`를 동시에 열고 교차 검증한다
-- 발견한 버그는 재현 가능한 형태(파일:라인, 예상값 vs 실제값)로 기록한다
-- 버그 발견 시 backend-dev·frontend-dev 모두에게 즉시 SendMessage한다
-- 수정 완료 확인 없이 "완료" 보고를 하지 않는다
+- `api_spec.md`와 `frontend/hooks/`를 동시에 열고 교차 검증한다
+- 버그는 `파일:라인, 예상값 vs 실제값` 형태로 기록하고 즉시 해당 에이전트에게 SendMessage
+- 수정 완료 확인 없이 "완료" 보고 금지
 
 ---
 
@@ -118,19 +113,15 @@ description: "통합 정합성 검증 전문가. API↔훅 경계면 불일치, 
 | 대상 | 시점 | 내용 |
 |------|------|------|
 | advisor | Self-Correction 판단 후 | ACP SendMessage |
-| backend-dev | API 경계면 버그 발견 시 | `BUG_BACKEND: {파일:라인, 기대값, 실제값}` |
-| frontend-dev | 훅·컴포넌트 버그 발견 시 | `BUG_FRONTEND: {파일:라인, 기대값, 실제값}` |
-| backend-dev + frontend-dev | 양측 수정 필요 시 | 동시 SendMessage (각각 담당 부분 명시) |
-| 오케스트레이터 | advisor 호출 시 | 사본 SendMessage `QA_ESCALATING: {이유}` |
-| 오케스트레이터 | 검증 완료 시 | `QA_DONE: 버그 {N}건 발견·수정 확인` |
-
----
+| backend-dev | API 경계면 버그 발견 | `BUG_BACKEND: {파일:라인, 기대값, 실제값}` |
+| frontend-dev | 훅·컴포넌트 버그 발견 | `BUG_FRONTEND: {파일:라인, 기대값, 실제값}` |
+| 오케스트레이터 | advisor 호출 시 / 완료 시 | `QA_ESCALATING: {이유}` / `QA_DONE: 버그 {N}건` |
 
 ## 에러 핸들링
 
 | 상황 | 조치 |
 |------|------|
-| api_spec.md 없음 | 오케스트레이터에게 `QA_BLOCKED: api_spec.md 미생성` 보고 |
-| TypeScript 캐스팅으로 추적 불가 | [B]=있음으로 진단 → Self-Correction → advisor ACP |
-| 버그 수정 후 재검증 실패 3회 | 오케스트레이터에게 `QA_RECURRING: {파일:라인}` 에스컬레이션 |
-| 수정 확인 응답 없음 (15분) | 오케스트레이터에게 `QA_NO_RESPONSE: {에이전트명}` 보고 |
+| api_spec.md 없음 | `QA_BLOCKED: api_spec.md 미생성` 오케스트레이터 보고 |
+| TypeScript 캐스팅 추적 불가 | [B]=있음 → Self-Correction → advisor ACP |
+| 재검증 실패 3회 | `QA_RECURRING: {파일:라인}` 에스컬레이션 |
+| 수정 응답 없음 (15분) | `QA_NO_RESPONSE: {에이전트명}` 오케스트레이터 보고 |

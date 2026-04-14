@@ -44,6 +44,22 @@ Advisor 호출 시 전체 히스토리 대신 **ACP(Advisor Context Package, ≤
 
 ---
 
+### software-dev-team — 풀스택 개발 팀 (Gatekeeper-Advisor 내장)
+
+백엔드 API · 프론트엔드 UI · QA 검증을 담당하는 3인 에이전트 팀. 개별 에이전트에 Self-Correction 프로토콜이 내장되어 있고, 오케스트레이터의 Gatekeeper 루프가 외부에서 교착을 감지해 Advisor(Opus)를 주입한다.
+
+- **위치:** `skills/software-dev-team/`
+- **트리거:** "풀스택 개발 팀", "백엔드/프론트엔드/QA 에이전트", "Gatekeeper-Advisor 실전 예시"
+- **에이전트:**
+  - [advisor.md](skills/software-dev-team/agents/advisor.md) — ACP 수신 → 교착 원인 진단 → 교정 접근법 발신
+  - [backend-dev.md](skills/software-dev-team/agents/backend-dev.md) — REST API 구현 + Self-Correction 내장
+  - [frontend-dev.md](skills/software-dev-team/agents/frontend-dev.md) — UI/훅/라우팅 구현 + Self-Correction 내장
+  - [qa-inspector.md](skills/software-dev-team/agents/qa-inspector.md) — API↔훅 경계면 검증 + QA Self-Correction
+- **참조 문서:**
+  - [recovery-playbook.md](skills/software-dev-team/references/recovery-playbook.md) — 교착 패턴별 ACP 예시 + Advisor 교정 성공 사례
+
+---
+
 ## 도메인 설계 문서
 
 ### AI 기반 인력운영 최적화 시스템
@@ -75,12 +91,22 @@ skills/
 │       ├── skill-testing-guide.md    # 테스트 방법론 (행동 패턴 테스트 포함)
 │       └── qa-agent-guide.md         # QA 에이전트 설계 가이드
 │
-└── gatekeeper-advisor/               # 교착 감지 & Advisor 판단 로직
-    ├── skill.md
+├── gatekeeper-advisor/               # 교착 감지 & Advisor 판단 로직
+│   ├── skill.md
+│   └── references/
+│       ├── self-correction-prompts.md
+│       ├── outer-loop-stagnation.md
+│       ├── context-compression.md    # ACP 압축 알고리즘
+│       ├── agent-definitions.md      # advisor + gatekeeper 에이전트 정의
+│       └── orchestrator-integration.md
+│
+└── software-dev-team/                # 풀스택 개발 팀 (Gatekeeper-Advisor 내장 실전 예시)
+    ├── skill.md                      # 오케스트레이터 + Phase 3 Gatekeeper 모니터링 루프
+    ├── agents/
+    │   ├── advisor.md                # ACP 수신 → 교착 원인 진단 → 교정 접근법
+    │   ├── backend-dev.md            # REST API 구현 + Self-Correction 내장
+    │   ├── frontend-dev.md           # UI/훅/라우팅 구현 + Self-Correction 내장
+    │   └── qa-inspector.md           # API↔훅 경계면 검증 + QA Self-Correction
     └── references/
-        ├── self-correction-prompts.md
-        ├── outer-loop-stagnation.md
-        ├── context-compression.md    # ACP 압축 알고리즘
-        ├── agent-definitions.md      # advisor + gatekeeper 에이전트 정의
-        └── orchestrator-integration.md
+        └── recovery-playbook.md      # 교착 패턴 + ACP 예시 + Advisor 교정 성공 사례
 ```

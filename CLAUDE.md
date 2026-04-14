@@ -19,14 +19,24 @@ codex/
 │   │       ├── skill-testing-guide.md
 │   │       └── qa-agent-guide.md
 │   │
-│   └── gatekeeper-advisor/        # 교착 감지 & Advisor 판단 로직 스킬
-│       ├── skill.md               # 핵심 스킬 정의 (두 트리거 경로 + ACP 포맷)
+│   ├── gatekeeper-advisor/        # 교착 감지 & Advisor 판단 로직 스킬
+│   │   ├── skill.md               # 핵심 스킬 정의 (두 트리거 경로 + ACP 포맷)
+│   │   └── references/
+│   │       ├── self-correction-prompts.md   # 도메인별 자가 진단 변형 + ACP 예시
+│   │       ├── outer-loop-stagnation.md     # Outer Loop 알고리즘 상세
+│   │       ├── context-compression.md       # ACP 토큰 버짓 + 압축 규칙
+│   │       ├── agent-definitions.md         # advisor.md + gatekeeper.md 정의 전문
+│   │       └── orchestrator-integration.md  # 팀/서브에이전트 통합 전체 예시
+│   │
+│   └── software-dev-team/         # 풀스택 개발 팀 — Gatekeeper-Advisor 실전 구현
+│       ├── skill.md               # 오케스트레이터 + Gatekeeper 모니터링 루프
+│       ├── agents/
+│       │   ├── advisor.md         # ACP 수신 → 교정 진단 발신
+│       │   ├── backend-dev.md     # REST API + Self-Correction
+│       │   ├── frontend-dev.md    # UI/훅/라우팅 + Self-Correction
+│       │   └── qa-inspector.md    # 경계면 검증 + QA Self-Correction
 │       └── references/
-│           ├── self-correction-prompts.md   # 도메인별 자가 진단 변형 + ACP 예시
-│           ├── outer-loop-stagnation.md     # Outer Loop 알고리즘 상세
-│           ├── context-compression.md       # ACP 토큰 버짓 + 압축 규칙
-│           ├── agent-definitions.md         # advisor.md + gatekeeper.md 정의 전문
-│           └── orchestrator-integration.md  # 팀/서브에이전트 통합 전체 예시
+│           └── recovery-playbook.md  # 교착 패턴 + ACP 예시 + 성공 사례
 │
 ├── docs/
 │   └── ai-workforce-optimization-system.md  # AI 기반 인력운영 최적화 시스템 설계서
@@ -85,6 +95,31 @@ codex/
 3. `context-compression.md` — ACP 구성 절차 + 토큰 버짓 규칙
 4. `self-correction-prompts.md` — 도메인별 자가 진단 변형 + ACP 압축 전/후 예시
 5. `outer-loop-stagnation.md` — 스냅샷 알고리즘 + 다중 에이전트 교착 + 에스컬레이션
+
+---
+
+### software-dev-team (`skills/software-dev-team/skill.md`)
+
+**역할:** 백엔드 API · 프론트엔드 UI · QA 검증을 담당하는 3인 에이전트 팀. Gatekeeper-Advisor 패턴의 실전 구현 예시.
+
+**트리거:** "풀스택 개발 팀 구성", "백엔드/프론트엔드/QA 에이전트 팀", "Gatekeeper-Advisor 실전 하네스"
+
+**팀 구성:**
+
+| 에이전트 | 역할 | Self-Correction 트리거 |
+|---------|------|----------------------|
+| `backend-dev` | REST API, DB, 인증 구현 | 환경변수 미설정, 외부 API 불일치, 타입 에러 |
+| `frontend-dev` | 컴포넌트, 훅, 라우팅 구현 | API shape 불일치, TypeScript 캐스팅, 무한 리렌더 |
+| `qa-inspector` | API↔훅 경계면, 라우팅, 상태전이 검증 | TypeScript `as`/`any` 추적 불가, 비동기 패턴 불확실 |
+| `advisor` | 교착 원인 진단 + 교정 접근법 발신 | — (호출만 받음) |
+
+**Gatekeeper 루프 (Phase 3):**
+- 에이전트별 `stagnation[agent]` 독립 추적
+- `stagnation >= 2 AND advisor_calls < 3` → ACP 구성 → advisor SendMessage
+- `advisor_calls >= 3 AND stagnation >= 2` → Level 3 사용자 에스컬레이션
+
+**참조:**
+- `references/recovery-playbook.md` — 교착 패턴별 ACP + Advisor 교정 성공 사례 2건
 
 ---
 
