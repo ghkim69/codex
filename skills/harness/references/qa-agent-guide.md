@@ -11,6 +11,7 @@
 3. QA 에이전트 설계 원칙
 4. 검증 체크리스트 템플릿
 5. QA 에이전트 정의 템플릿
+6. QA 에이전트의 Self-Correction (Gatekeeper-Advisor 통합)
 
 ---
 
