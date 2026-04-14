@@ -90,7 +90,7 @@ Advisor(Opus)는 고성능이지만 토큰 비용도 높다. 전체 히스토리
 [ASK] {Advisor에게 원하는 것 — 한 문장, 가능하면 Yes/No 또는 선택지 형태}
 ```
 
-**토큰 버짓 목표:** 전체 ACP ≤ 500 토큰. 각 섹션의 세부 한도와 압축 규칙은 `references/context-compression.md` 참조.
+**토큰 버짓:** 전체 ACP 목표 360 토큰 / 상한 680 토큰. 섹션별 세부 한도와 압축 규칙은 `references/context-compression.md` 참조.
 
 > 도메인별 ACP 작성 예시(압축 전/후 비교 포함): `references/self-correction-prompts.md` 참조.
 
