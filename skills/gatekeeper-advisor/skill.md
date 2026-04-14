@@ -261,8 +261,65 @@ Advisor는 항상 `model: "opus"` (고성능 모델)를 사용하고, 작업 에
 
 ---
 
+## 테스트 시나리오
+
+### 정상 흐름 A: Self-Correction → Advisor → 해소
+
+1. 작업 에이전트가 "Supabase 환경 변수 연결" 태스크 수행
+2. 이터레이션 3에서 자가 진단: [C]=낮음, [D]=아니오 → Advisor 호출 조건 충족
+3. ACP 구성 (TRIGGER: `C=낮음+D=아니오`, ATTEMPTS 3회 콜랩스, ~180 토큰)
+4. Advisor(opus) 호출 → "서버 컴포넌트에서 `process.env` 직접 사용, `NEXT_PUBLIC_` 불필요" 진단
+5. 작업 에이전트가 Advisor 지시에 따라 수정 → 이터레이션 4에서 성공
+6. 예상 결과: Advisor 1회 호출로 교착 해소, `stagnation_count` 리셋
+
+### 정상 흐름 B: Outer Loop → Advisor 주입 → 재조율
+
+1. 팀원 `researcher-1`이 Redis HA 조사 태스크 수행
+2. 이터레이션 2, 3에서 `_workspace/` 파일 변화 없음, TaskUpdate 없음
+3. 오케스트레이터 감지: `stagnation_count=2` → Outer Loop ACP 구성
+4. Advisor 주입: 검색 전략 2가지 제시
+5. 오케스트레이터가 `researcher-1`에게 SendMessage로 Advisor 지시 전달
+6. 이터레이션 4에서 파일 생성 확인 → `stagnation_count` 리셋
+
+### 에러 흐름: MAX_ADVISOR_CALLS 초과 → 사용자 에스컬레이션
+
+1. 작업 에이전트가 "외부 결제 API 연동" 수행
+2. Advisor를 3회 호출했지만 매번 다른 방법 제시 → 여전히 교착
+3. `advisor_count=3 >= MAX_ADVISOR_CALLS` → 사용자 에스컬레이션
+4. 오케스트레이터가 지금까지의 시도 요약과 선택지를 사용자에게 보고
+5. 예상 결과: 무한 Advisor 루프 없이 사용자가 개입하여 근본 결정
+
+---
+
+## 트리거 검증
+
+### Should-trigger (이 스킬을 사용해야 하는 상황)
+
+1. "에이전트가 같은 코드를 계속 수정하는데 진전이 없어"
+2. "작업이 30분째 멈춰 있는데 왜 그런지 모르겠어"
+3. "Sonnet이 루프에 빠진 것 같아"
+4. "서브에이전트를 3번 재시작했는데도 계속 실패해"
+5. "팀원들이 자기들끼리 같은 말만 반복하고 있어"
+6. "진전이 없을 때 Advisor를 불러야 할지 판단 기준이 뭐야"
+7. "에이전트 교착 감지 로직 구현해줘"
+8. "언제 Opus를 호출해야 하는지 결정하는 로직 설계해줘"
+
+### Should-NOT-trigger (다른 도구/스킬이 적합한 상황)
+
+1. "코드 리뷰해줘" → `qa-agent-guide.md` (품질 검증 패턴)
+2. "다음 Phase로 넘어가줘" → 오케스트레이터 Phase 전환 로직
+3. "에이전트 팀 구성해줘" → `harness` 스킬 (팀 아키텍처 설계)
+4. "Advisor 에이전트 역할을 정의해줘" → `agent-design-patterns.md`
+5. "작업이 완료됐는지 확인해줘" → TaskGet + 완료 기준 체크
+6. "API 응답이 훅 타입과 맞는지 확인해줘" → `qa-agent-guide.md` (경계면 검증)
+7. "에이전트 성능이 느려" → 성능은 교착이 아님, 다른 최적화 접근 필요
+
+---
+
 ## 참고
 
 - 도메인별 자가 진단 프롬프트 변형 및 Advisor 에이전트 정의: `references/self-correction-prompts.md`
 - Outer Loop 상태 추적 상세 구현 및 다중 에이전트 교착 감지: `references/outer-loop-stagnation.md`
 - **ACP 압축 알고리즘, 토큰 버짓, 섹션별 압축 규칙**: `references/context-compression.md`
+- Advisor + Gatekeeper 에이전트 정의 템플릿: `references/agent-definitions.md`
+- 오케스트레이터 통합 전체 예시: `references/orchestrator-integration.md`
