@@ -574,3 +574,17 @@ backend-dev ──API 스펙──────────→ frontend-dev (API 
 팀 전체를 조율하는 상위 스킬. 시나리오별 에이전트 구성과 워크플로우를 정의.
 템플릿: `references/orchestrator-template.md` 참조.
 **실행 모드를 반드시 명시** — 에이전트 팀(기본) 또는 서브 에이전트.
+
+### Gatekeeper-Advisor 컴포넌트 (장기 실행 작업 적용)
+
+외부 API 의존·탐색적 작업처럼 교착 가능성이 있는 팀에 추가한다.
+
+| 컴포넌트 | 위치 | 핵심 내용 |
+|---------|------|---------|
+| `advisor.md` | `.claude/agents/advisor.md` | 교착 해소 전문가. ACP 수신 → 진단 → 권장 접근법 제시 |
+| Gatekeeper 로직 | 오케스트레이터 내장 (권장) 또는 `gatekeeper.md` | StateSnapshot 비교, stagnation_count 추적, Advisor 호출 |
+| Self-Correction | 교착 가능성 높은 에이전트 정의에 내장 | [P][C][D][B][R] 자가 진단 + ACP 구성 프로토콜 |
+
+**핵심 상수:** `STAGNATION_THRESHOLD = 2`, `MAX_ADVISOR_CALLS = 3`, ACP 상한 680 토큰.
+
+정의 전문 및 통합 코드: `skills/gatekeeper-advisor` 스킬 참조.

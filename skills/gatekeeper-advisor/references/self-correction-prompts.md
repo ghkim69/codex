@@ -247,7 +247,9 @@ Redis Cluster와 Redis Sentinel 비교 자료를 찾고 있는데 도움이 필�
 
 ## 4. Advisor 에이전트 정의 템플릿
 
-Gatekeeper가 호출하는 Advisor 에이전트 정의. 프로젝트의 `.claude/agents/advisor.md`에 생성한다.
+Gatekeeper가 호출하는 Advisor 에이전트 정의의 **축약 버전**. 프로젝트의 `.claude/agents/advisor.md`에 생성한다.
+
+> 팀 통신 프로토콜, 에러 핸들링, Gatekeeper 정의까지 포함한 **전체 버전**: `agent-definitions.md` 참조.
 
 ```markdown
 ---
